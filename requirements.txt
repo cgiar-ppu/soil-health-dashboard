@@ -1,0 +1,13 @@
+pytest
+streamlit
+langchain
+langchain-community
+langgraph
+langgraph-checkpoint-sqlite
+pydantic
+python-dotenv
+pandas
+openpyxl
+plotly
+python-docx
+streamlit-plotly-events

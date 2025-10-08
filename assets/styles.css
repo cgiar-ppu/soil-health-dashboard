@@ -1,0 +1,23 @@
+/* App styles */
+:root { --accent: #2a9d8f; }
+
+/* Page tweaks */
+.block-container { padding-top: 0.5rem; }
+
+/****** Headers ******/
+h1, h2, h3, h4 { color: var(--accent); }
+
+/* Metrics spacing */
+[data-testid="stMetricValue"] { font-weight: 700; }
+
+/* Tables */
+.css-1yxu0j3, .stDataFrame { font-size: 0.9rem; }
+
+/* Expander */
+.streamlit-expanderHeader { font-weight: 600; }
+
+/* Keyword chips */
+.chip-container { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 16px; background: #eef6f5; color: #215752; border: 1px solid #cae7e2; font-size: 12px; }
+.chip.small { font-size: 11px; padding: 1px 6px; }
+.chip .x { margin-left: 6px; opacity: 0.7; }
