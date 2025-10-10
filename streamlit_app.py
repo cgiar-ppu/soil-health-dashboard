@@ -38,6 +38,37 @@ from src.viz import (
     time_series,
     world_map_countries,
 )
+import plotly.express as px  # Add this
+
+COOL_SEQUENCE = px.colors.sequential.Blues_r
+WARM_SEQUENCE = px.colors.sequential.Oranges_r
+
+# After imports and before helpers
+TOPIC_TITLES = {
+    -1: "Soil Agronomic Practices",
+    0: "Producer Training Honduras",
+    1: "No-Till Soil Management",
+    2: "Farmer Agroecology Training",
+    3: "Conservation Crop Yields",
+    4: "Tunisia Livestock Forage",
+    5: "Rice Conservation Scenarios",
+    6: "Kenya Agroecological Resources",
+    7: "Fertilizer Nutrient Advisory",
+    8: "Rice Yield Management",
+    9: "Soil Salinity Mapping",
+    10: "Acid Cropland Mitigation",
+    11: "Bangladesh Organic Vermicompost",
+    12: "India Natural Farming",
+    13: "Regenerative Soil Health",
+    14: "Lime Acidity Management",
+    15: "AMF Disease Resistance",
+    16: "Nature Positive Solutions",
+    17: "Microbial Biodiversity Longan",
+    18: "Digital Soil Platform",
+    19: "Wheat Fertility Production",
+    20: "Sustainable Livestock Strategies",
+    21: "Women Soil Empowerment"
+}
 
 # --------------
 # Helpers
@@ -166,17 +197,12 @@ def _build_topic_display_map(df_with_topics: pd.DataFrame) -> Dict[int, str]:
     """Return mapping from Topic number (Int) to 'Topic N – Cluster Name' label."""
     if "Topic" not in df_with_topics.columns:
         return {}
-    # Try to locate cluster name column
-    name_col = _get_first_present(df_with_topics, ["Cluster Name", "Cluster name", "Name"])
     labels: Dict[int, str] = {}
     topic_series = pd.to_numeric(df_with_topics["Topic"], errors="coerce").dropna().astype(int)
     unique_topics = sorted(topic_series.unique().tolist())
     for t in unique_topics:
-        if name_col and not df_with_topics.loc[df_with_topics["Topic"] == t, name_col].dropna().empty:
-            first_name = df_with_topics.loc[df_with_topics["Topic"] == t, name_col].dropna().astype(str).iloc[0]
-            labels[t] = f"Topic {t} – {first_name}"  # en dash
-        else:
-            labels[t] = f"Topic {t}"
+        title = TOPIC_TITLES.get(t, "Unnamed")
+        labels[t] = f"Topic {t} — {title}"
     return labels
 
 
@@ -469,7 +495,7 @@ def _tab_insights(df: pd.DataFrame):
         if "Partner" in p_long.columns and not p_long.empty:
             p_counts = p_long.groupby("Partner", dropna=False).size().reset_index(name="Count")
             p_counts = p_counts.sort_values("Count", ascending=False).head(10)
-            fig = configurable_bar(p_counts, x="Partner", y_agg={"Count": "sum:Count"})
+            fig = configurable_bar(p_counts, x="Partner", y_agg={"Count": "sum:Count"}, color_discrete_sequence=COOL_SEQUENCE)
             _bar_chart_with_details(fig, base_df=df, x_col="Partner", color_col=None, key="ins_partners", header_prefix="Partner selection")
         else:
             fig = configurable_bar(pd.DataFrame({"Partner": [], "Count": []}), x="Partner", y_agg={"Count": "sum:Count"})
@@ -482,7 +508,7 @@ def _tab_insights(df: pd.DataFrame):
         if "Country" in c_long.columns and not c_long.empty:
             c_counts = c_long.groupby("Country", dropna=False).size().reset_index(name="Count")
             c_counts = c_counts.sort_values("Count", ascending=False).head(15)
-            fig = configurable_bar(c_counts, x="Country", y_agg={"Count": "sum:Count"})
+            fig = configurable_bar(c_counts, x="Country", y_agg={"Count": "sum:Count"}, color_discrete_sequence=WARM_SEQUENCE)
             _bar_chart_with_details(fig, base_df=df, x_col="Country", color_col=None, key="ins_countries", header_prefix="Country selection")
         else:
             fig = configurable_bar(pd.DataFrame({"Country": [], "Count": []}), x="Country", y_agg={"Count": "sum:Count"})
@@ -518,7 +544,7 @@ def _tab_insights(df: pd.DataFrame):
     st.divider()
     st.caption("Stacked bar: Type by Topic (top 20 categories)")
     x_col = _get_first_present(df, ["Type", "Output Type", "Document Type", "Type of Output"]) or None
-    color_col = "Topic" if "Topic" in df.columns else None
+    color_col = "Topic Label" if "Topic Label" in df.columns else "Topic" if "Topic" in df.columns else None
     if x_col:
         fig = configurable_bar(df, x=x_col, y_agg={"Count": "count"}, color=color_col, top_n=20)
         st.plotly_chart(fig, use_container_width=True)
@@ -563,6 +589,7 @@ def _quick_filter_chips(values: List[str], key_prefix: str, session_key: str, ma
 
 def _tab_overview(df: pd.DataFrame):
     st.subheader("Overview")
+    st.markdown("**Nota importante:** Los Topics/Clústers incluyen títulos resumidos (ej. 'Topic 2 — Farmer Agroecology Training') en todos los gráficos y selecciones para resumir el tema principal.")
     if df.empty:
         st.info("No data to display with the current filters.")
         return
@@ -590,24 +617,15 @@ def _tab_overview(df: pd.DataFrame):
         type_col = _get_first_present(df, ["Type", "Output Type", "Document Type", "Type of Output"]) or None
         if type_col:
             st.caption(f"Distribution by {type_col}")
-            st.plotly_chart(pie_distribution(df, category=type_col, top_n=12), use_container_width=True)
+            fig = pie_distribution(df, category=type_col, top_n=12, color_discrete_sequence=COOL_SEQUENCE)
+            fig.update_traces(hovertemplate="<b>%{label}</b><br>Count: %{value}<br>Percent: %{percent}<extra>Destacado: Categoría de tipo</extra>")
+            st.plotly_chart(fig, use_container_width=True)
         else:
             st.caption("Type column not found")
     with colB:
-        if "Topic" in df.columns:
+        if "Topic Label" in df.columns:
             st.caption("Distribution by Topic")
-            # Create a label combining Topic and Cluster Name where present
-            name_col = _get_first_present(df, ["Cluster Name"]) or None
-            plot_df = df.copy()
-            if name_col:
-                plot_df["TopicLabel"] = plot_df.apply(
-                    lambda r: f"Topic {int(r['Topic'])} – {str(r[name_col])}" if pd.notna(r.get("Topic")) else np.nan,
-                    axis=1,
-                )
-                cat = "TopicLabel"
-            else:
-                cat = "Topic"
-            st.plotly_chart(pie_distribution(plot_df, category=cat, top_n=12), use_container_width=True)
+            st.plotly_chart(pie_distribution(df, category="Topic Label", top_n=12, color_discrete_sequence=WARM_SEQUENCE), use_container_width=True)
         else:
             st.caption("Topic column not found")
 
@@ -639,27 +657,17 @@ def _tab_trends(df: pd.DataFrame):
         work = work.dropna(subset=["__time"])  # keep only valid times
 
     # Trends by Topic
-    cat_topic = None
-    if "Topic" in work.columns:
-        name_col = _get_first_present(work, ["Cluster Name"]) or None
-        if name_col:
-            work["TopicLbl"] = work.apply(
-                lambda r: f"Topic {int(r['Topic'])} – {str(r[name_col])}" if pd.notna(r.get("Topic")) else np.nan,
-                axis=1,
-            )
-            cat_topic = "TopicLbl"
-        else:
-            cat_topic = "Topic"
+    cat_topic = "Topic Label" if "Topic Label" in work.columns else ("Topic" if "Topic" in work.columns else None)
 
     col1, col2 = st.columns(2)
     with col1:
         st.caption("Results over time by Topic")
-        st.plotly_chart(time_series(work, time_col="__time", category=cat_topic, metric="count", kind="area"), use_container_width=True)
+        st.plotly_chart(time_series(work, time_col="__time", category=cat_topic, metric="count", kind="area", color_discrete_sequence=WARM_SEQUENCE), use_container_width=True)
     with col2:
         # Trends by Type
         type_col = _get_first_present(work, ["Type", "Output Type", "Document Type", "Type of Output"]) or None
         st.caption("Results over time by Type")
-        st.plotly_chart(time_series(work, time_col="__time", category=type_col, metric="count", kind="area"), use_container_width=True)
+        st.plotly_chart(time_series(work, time_col="__time", category=type_col, metric="count", kind="area", color_discrete_sequence=COOL_SEQUENCE), use_container_width=True)
 
 
 def _tab_geography(df: pd.DataFrame):
@@ -677,11 +685,28 @@ def _tab_geography(df: pd.DataFrame):
 
     map_col, bar_col = st.columns([2, 1])
     with map_col:
-        st.plotly_chart(world_map_countries(counts, country_col="Country", value_col="Count"), use_container_width=True, key="geo_map")
+        try:
+            if counts.empty:
+                fig = empty_figure("No country data")
+            else:
+                fig = world_map_countries(counts, country_col="Country", value_col="Count")
+            st.plotly_chart(fig, use_container_width=True, key="geo_map")
+        except Exception as e:
+            st.error(f"Error rendering map: {str(e)}")
+            st.plotly_chart(empty_figure("Map error"), use_container_width=True)
+
     with bar_col:
         st.caption("Top countries")
-        top = counts.sort_values("Count", ascending=False).head(20)
-        st.plotly_chart(configurable_bar(top, x="Country", y_agg={"Count": "sum:Count"}), use_container_width=True)
+        try:
+            top = counts.sort_values("Count", ascending=False).head(20)
+            if top.empty:
+                fig = empty_figure("No data")
+            else:
+                fig = configurable_bar(top, x="Country", y_agg={"Count": "sum:Count"})
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"Error rendering bar chart: {str(e)}")
+            st.plotly_chart(empty_figure("Chart error"), use_container_width=True)
 
 
 def _tab_clusters(df: pd.DataFrame, summaries: Dict[str, object]):
@@ -763,7 +788,8 @@ def _tab_clusters(df: pd.DataFrame, summaries: Dict[str, object]):
     # Render cards for each cluster
     for item in filtered_items:
         with st.container():
-            st.markdown(f"### {item['title']}")
+            title = f"Topic {int(item['topic'])} — {TOPIC_TITLES.get(int(item['topic']), item.get('name', 'Unnamed'))}"
+            st.markdown(f"### {title}")
             if item.get("name"):
                 st.caption(f"Cluster Name: {item['name']}")
             # Keyword chips
@@ -826,12 +852,13 @@ def _tab_partners(df: pd.DataFrame):
         st.plotly_chart(configurable_bar(counts.head(30), x="Partner", y_agg={"Count": "sum:Count"}), use_container_width=True)
     with col2:
         # Partner by Topic stacked bar
-        if "Topic" in p_long.columns:
-            agg = p_long.groupby(["Partner", "Topic"], dropna=False).size().reset_index(name="Count")
+        if "Topic Label" in p_long.columns:
+            agg = p_long.groupby(["Partner", "Topic Label"], dropna=False).size().reset_index(name="Count")
             st.caption("Partners by Topic")
+            st.plotly_chart(configurable_bar(agg, x="Partner", y_agg={"Count": "sum:Count"}, color="Topic Label", top_n=25), use_container_width=True)
+        elif "Topic" in p_long.columns:
+            agg = p_long.groupby(["Partner", "Topic"], dropna=False).size().reset_index(name="Count")
             st.plotly_chart(configurable_bar(agg, x="Partner", y_agg={"Count": "sum:Count"}, color="Topic", top_n=25), use_container_width=True)
-        else:
-            st.info("Topic column not found for stacked chart.")
 
     # Searchable partner list
     st.divider()
@@ -856,7 +883,7 @@ def _tab_partners_countries(df: pd.DataFrame):
     st.markdown("### Partners")
     if "Partner" in p_long.columns and not p_long.empty:
         p_counts = p_long.groupby("Partner", dropna=False).size().reset_index(name="Count").sort_values("Count", ascending=False)
-        st.plotly_chart(configurable_bar(p_counts, x="Partner", y_agg={"Count": "sum:Count"}, top_n=25), use_container_width=True)
+        st.plotly_chart(configurable_bar(p_counts, x="Partner", y_agg={"Count": "sum:Count"}, top_n=25, color_discrete_sequence=COOL_SEQUENCE), use_container_width=True)
         st.caption("Quick filter by top partners")
         _quick_filter_chips(p_counts["Partner"].head(12).astype(str).tolist(), key_prefix="chip_partner", session_key="flt_partners")
 
@@ -879,7 +906,7 @@ def _tab_partners_countries(df: pd.DataFrame):
     st.markdown("### Countries")
     if "Country" in c_long.columns and not c_long.empty:
         c_counts = c_long.groupby("Country", dropna=False).size().reset_index(name="Count").sort_values("Count", ascending=False)
-        st.plotly_chart(configurable_bar(c_counts, x="Country", y_agg={"Count": "sum:Count"}, top_n=25), use_container_width=True)
+        st.plotly_chart(configurable_bar(c_counts, x="Country", y_agg={"Count": "sum:Count"}, top_n=25, color_discrete_sequence=WARM_SEQUENCE), use_container_width=True)
         st.caption("Quick filter by top countries")
         _quick_filter_chips(c_counts["Country"].head(12).astype(str).tolist(), key_prefix="chip_country", session_key="flt_countries")
 
@@ -977,6 +1004,12 @@ def _tab_data(df: pd.DataFrame):
             link_columns.append(cand)
 
     view_df = df.iloc[int(start):int(end)].copy()
+    # Add Topic Label if Topic is present and not already in view_df
+    if "Topic" in view_df.columns and "Topic Label" in df.columns and "Topic Label" not in view_df.columns:
+        cols = view_df.columns.tolist()
+        topic_idx = cols.index("Topic") + 1
+        cols.insert(topic_idx, "Topic Label")
+        view_df = view_df[cols]
     # Sanitize links for rendering
     view_df = _sanitize_link_values(view_df, link_columns)
 
@@ -1039,6 +1072,11 @@ def main():
     if not kw_df.empty:
         df = map_topics(df, kw_df)
     df = _ensure_row_id(df)
+    # Remove any duplicate columns
+    df = df.loc[:, ~df.columns.duplicated()]
+    # Add Topic Label if not present
+    if "Topic Label" not in df.columns and "Topic" in df.columns:
+        df["Topic Label"] = df["Topic"].apply(lambda t: f"Topic {t} — {TOPIC_TITLES.get(t, 'Unnamed')}" if pd.notna(t) else pd.NA)
 
     # Sidebar filters
     st.sidebar.header("Global filters")
@@ -1093,6 +1131,8 @@ def main():
     partners_opts = _safe_unique(p_long_all["Partner"]) if "Partner" in p_long_all.columns else []
     partners_sel = st.sidebar.multiselect("Partners", options=partners_opts, key="flt_partners")
 
+    st.sidebar.caption("Nota: Los Topics/Clústers se muestran con títulos resumidos (ej. 'Topic 2 — Farmer Agroecology Training') para mayor claridad.")
+
     # Compose filters dict
     filters = {
         "search": search,
@@ -1133,6 +1173,19 @@ def main():
 
     with tabs[7]:
         _tab_data(filtered)
+
+    with st.expander("Debug: Verificación de datos y títulos (click para expandir)"):
+        st.write("Columnas en el DataFrame principal:", df.columns.tolist())
+        if "Topic" in df.columns:
+            st.write("Columna 'Topic' detectada. Muestra de valores:", df["Topic"].unique()[:10])
+            if "Topic Label" in df.columns:
+                st.write("Muestra de 'Topic Label' (con títulos):", df["Topic Label"].dropna().unique()[:10])
+            else:
+                st.error("Columna 'Topic Label' no generada. Verifica TOPIC_TITLES y la aplicación de apply().")
+        else:
+            st.error("Columna 'Topic' NO detectada en los datos. Los títulos no se pueden mapear. Verifica el archivo CSV de input.")
+        st.write("Número de rows en df:", len(df))
+        st.write("Número de rows después de filtros:", len(filtered))
 
 
 if __name__ == "__main__":

@@ -115,6 +115,7 @@ def configurable_bar(
     y_agg: Dict[str, str] | None = None,
     color: Optional[str] = None,
     top_n: Optional[int] = None,
+    color_discrete_sequence: Optional[List[str]] = None,
 ):
     """Build a configurable bar chart using Plotly.
 
@@ -195,6 +196,7 @@ def configurable_bar(
             color=color,
             category_orders={x: order} if order else None,
             text_auto=True,
+            color_discrete_sequence=color_discrete_sequence,
         )
     except TypeError:
         # Older plotly versions may not support text_auto
@@ -229,6 +231,7 @@ def pie_distribution(
     category: str,
     top_n: int = 15,
     other_bucket: bool = True,
+    color_discrete_sequence: Optional[List[str]] = None,
 ):
     """Pie chart for category distribution based on row counts.
 
@@ -260,7 +263,7 @@ def pie_distribution(
     plot_df = data.reset_index()
     plot_df.columns = [category, "Count"]
 
-    fig = px.pie(plot_df, names=category, values="Count")
+    fig = px.pie(plot_df, names=category, values="Count", color_discrete_sequence=color_discrete_sequence)
     fig.update_traces(textposition="inside", textinfo="percent+label")
     fig.update_layout(legend_title=category)
     return fig
@@ -273,6 +276,7 @@ def time_series(
     metric: str = "count",
     kind: str = "line",
     normalize: bool = False,
+    color_discrete_sequence: Optional[List[str]] = None,
 ):
     """Time series chart for counts or sums per time bucket.
 
@@ -338,6 +342,7 @@ def time_series(
         x=time_col,
         y=value_col,
         color=category if category and category in agg.columns else None,
+        color_discrete_sequence=color_discrete_sequence,
     )
     fig.update_layout(xaxis_title=time_col, yaxis_title=y_title)
     return fig
