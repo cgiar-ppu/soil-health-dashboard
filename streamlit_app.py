@@ -198,11 +198,12 @@ def _build_topic_display_map(df_with_topics: pd.DataFrame) -> Dict[int, str]:
     if "Topic" not in df_with_topics.columns:
         return {}
     labels: Dict[int, str] = {}
-    topic_series = pd.to_numeric(df_with_topics["Topic"], errors="coerce").dropna().astype(int)
+    # Extract numeric topic if string
+    topic_series = pd.to_numeric(df_with_topics["Topic"].str.extract(r'Topic (\d+) -', expand=False), errors="coerce").dropna().astype(int)
     unique_topics = sorted(topic_series.unique().tolist())
     for t in unique_topics:
         title = TOPIC_TITLES.get(t, "Unnamed")
-        labels[t] = f"Topic {t} — {title}"
+        labels[t] = f"Topic {t} - {title}"
     return labels
 
 
@@ -272,7 +273,10 @@ def _apply_global_filters(
     # Topic filter
     sel_topics: List[int] = filters.get("topics") or []
     if sel_topics and "Topic" in out.columns:
-        out = out[out["Topic"].isin(sel_topics)]
+        # Parse number from string
+        out["__topic_num"] = pd.to_numeric(out["Topic"].str.extract(r'Topic (\d+) -', expand=False), errors="coerce").astype("Int64")
+        out = out[out["__topic_num"].isin(sel_topics)]
+        out = out.drop(columns=["__topic_num"])
 
     # Type filter
     type_col = _get_first_present(out, ["Type", "Output Type", "Document Type", "Type of Output"]) or None
@@ -595,6 +599,7 @@ def _tab_overview(df: pd.DataFrame):
         return
 
     # KPIs
+    df = df.drop_duplicates(subset=['_row_id'])
     c_long = build_country_long(df)
     p_long = build_partner_long(df)
     total_results = len(df)
@@ -623,9 +628,9 @@ def _tab_overview(df: pd.DataFrame):
         else:
             st.caption("Type column not found")
     with colB:
-        if "Topic Label" in df.columns:
+        if "Topic" in df.columns:
             st.caption("Distribution by Topic")
-            st.plotly_chart(pie_distribution(df, category="Topic Label", top_n=12, color_discrete_sequence=WARM_SEQUENCE), use_container_width=True)
+            st.plotly_chart(pie_distribution(df, category="Topic", top_n=12, color_discrete_sequence=WARM_SEQUENCE), use_container_width=True)
         else:
             st.caption("Topic column not found")
 
@@ -676,6 +681,7 @@ def _tab_geography(df: pd.DataFrame):
         st.info("No data to display with the current filters.")
         return
 
+    df = df.drop_duplicates(subset=['_row_id'])
     c_long = build_country_long(df)
     if "Country" not in c_long.columns or c_long.empty:
         st.info("No country data available.")
@@ -726,7 +732,7 @@ def _tab_clusters(df: pd.DataFrame, summaries: Dict[str, object]):
     name_col = _get_first_present(df, ["Cluster Name"]) or None
     kw_col = _get_first_present(df, ["Cluster Keywords"]) or None
 
-    topic_vals = pd.to_numeric(df["Topic"], errors="coerce").dropna().astype(int)
+    topic_vals = pd.to_numeric(df["Topic"].str.extract(r'Topic (\d+) -', expand=False), errors="coerce").dropna().astype(int)
     if topic_vals.empty:
         st.info("No valid Topic IDs found.")
         return
@@ -755,7 +761,9 @@ def _tab_clusters(df: pd.DataFrame, summaries: Dict[str, object]):
         catalog.append(
             {
                 "topic": int(t),
-                "title": f"Topic {int(t)}" + (f" – {name}" if name else ""),
+                "title": f"Topic {int(t)} - {TOPIC_TITLES.get(int(t), item.get('name', 'Unnamed'))}"
+                if name
+                else f"Topic {int(t)}",
                 "name": name,
                 "keywords_text": kw_text,
                 "keywords": kw_list,
@@ -788,7 +796,7 @@ def _tab_clusters(df: pd.DataFrame, summaries: Dict[str, object]):
     # Render cards for each cluster
     for item in filtered_items:
         with st.container():
-            title = f"Topic {int(item['topic'])} — {TOPIC_TITLES.get(int(item['topic']), item.get('name', 'Unnamed'))}"
+            title = f"Topic {int(item['topic'])} - {TOPIC_TITLES.get(int(item['topic']), item.get('name', 'Unnamed'))}"
             st.markdown(f"### {title}")
             if item.get("name"):
                 st.caption(f"Cluster Name: {item['name']}")
@@ -824,7 +832,7 @@ def _tab_clusters(df: pd.DataFrame, summaries: Dict[str, object]):
                     work["__time"] = pd.NaT
 
                 type_col = _get_first_present(work, ["Type", "Output Type", "Document Type", "Type of Output"]) or None
-                st.plotly_chart(time_series(work, time_col="__time", category=type_col, metric="count", kind="area"), use_container_width=True)
+                st.plotly_chart(time_series(work, time_col="__time", category=type_col, metric="count", kind="area"), use_container_width=True, key=f"cluster_time_series_{item['topic']}")
 
                 # Sample records
                 st.markdown("**Sample records**")
@@ -890,15 +898,22 @@ def _tab_partners_countries(df: pd.DataFrame):
         with st.expander("Browse results by partner"):
             sel_partner = st.selectbox("Select a partner", options=p_counts["Partner"].astype(str).tolist())
             st.button("Apply filter", on_click=lambda: _apply_partner_filter(sel_partner), key="apply_partner_filter")
-            # Show records filtered by this partner
-            ids = set(p_long.loc[p_long["Partner"] == sel_partner, "_row_id"].tolist())
-            sub = df[df["_row_id"].isin(ids)].copy()
-            q = st.text_input("Search within results (Title/Description)", value="")
-            if q:
-                sub = text_search(sub, q, columns=["Title", "Description"]) if set(["Title", "Description"]).intersection(sub.columns) else sub
-            show_dataframe(_with_clickable_links(sub))
-    else:
-        st.info("No partner data available.")
+            try:
+                if sel_partner is not None:
+                    # Case-insensitive match
+                    ids = set(p_long.loc[p_long["Partner"].str.lower() == str(sel_partner).lower(), "_row_id"].tolist())
+                    sub = df[df["_row_id"].isin(ids)].copy()
+                else:
+                    sub = pd.DataFrame()
+                q = st.text_input("Search within results (Title/Description)", value="")
+                if q:
+                    sub = text_search(sub, q, columns=["Title", "Description"]) if set(["Title", "Description"]).intersection(sub.columns) else sub
+                if sub.empty:
+                    st.info("No records found for this partner.")
+                else:
+                    show_dataframe(_with_clickable_links(sub))
+            except Exception as e:
+                st.error(f"Error loading records: {str(e)}")
 
     st.divider()
 
@@ -913,14 +928,22 @@ def _tab_partners_countries(df: pd.DataFrame):
         with st.expander("Browse results by country"):
             sel_country = st.selectbox("Select a country", options=c_counts["Country"].astype(str).tolist())
             st.button("Apply filter", on_click=lambda: _apply_country_filter(sel_country), key="apply_country_filter")
-            ids = set(c_long.loc[c_long["Country"] == sel_country, "_row_id"].tolist())
-            sub = df[df["_row_id"].isin(ids)].copy()
-            q = st.text_input("Search within results (Title/Description)", value="", key="q_country")
-            if q:
-                sub = text_search(sub, q, columns=["Title", "Description"]) if set(["Title", "Description"]).intersection(sub.columns) else sub
-            show_dataframe(_with_clickable_links(sub))
-    else:
-        st.info("No country data available.")
+            try:
+                if sel_country is not None:
+                    # Case-insensitive match
+                    ids = set(c_long.loc[c_long["Country"].str.lower() == str(sel_country).lower(), "_row_id"].tolist())
+                    sub = df[df["_row_id"].isin(ids)].copy()
+                else:
+                    sub = pd.DataFrame()
+                q = st.text_input("Search within results (Title/Description)", value="", key="q_country")
+                if q:
+                    sub = text_search(sub, q, columns=["Title", "Description"]) if set(["Title", "Description"]).intersection(sub.columns) else sub
+                if sub.empty:
+                    st.info("No records found for this country.")
+                else:
+                    show_dataframe(_with_clickable_links(sub))
+            except Exception as e:
+                st.error(f"Error loading records: {str(e)}")
 
 
 def _apply_partner_filter(value: str):
@@ -1004,12 +1027,6 @@ def _tab_data(df: pd.DataFrame):
             link_columns.append(cand)
 
     view_df = df.iloc[int(start):int(end)].copy()
-    # Add Topic Label if Topic is present and not already in view_df
-    if "Topic" in view_df.columns and "Topic Label" in df.columns and "Topic Label" not in view_df.columns:
-        cols = view_df.columns.tolist()
-        topic_idx = cols.index("Topic") + 1
-        cols.insert(topic_idx, "Topic Label")
-        view_df = view_df[cols]
     # Sanitize links for rendering
     view_df = _sanitize_link_values(view_df, link_columns)
 
@@ -1072,11 +1089,12 @@ def main():
     if not kw_df.empty:
         df = map_topics(df, kw_df)
     df = _ensure_row_id(df)
+    df["_row_id"] = pd.Series(range(len(df))).values  # Reset to unique
     # Remove any duplicate columns
     df = df.loc[:, ~df.columns.duplicated()]
     # Add Topic Label if not present
     if "Topic Label" not in df.columns and "Topic" in df.columns:
-        df["Topic Label"] = df["Topic"].apply(lambda t: f"Topic {t} — {TOPIC_TITLES.get(t, 'Unnamed')}" if pd.notna(t) else pd.NA)
+        df["Topic"] = df["Topic"].apply(lambda t: f"Topic {t} - {TOPIC_TITLES.get(t, 'Unnamed')}" if pd.notna(t) else pd.NA)
 
     # Sidebar filters
     st.sidebar.header("Global filters")
