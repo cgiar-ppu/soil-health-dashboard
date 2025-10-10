@@ -1,4 +1,4 @@
-from __future__ import annotations
+alerefrom __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 import re
@@ -593,7 +593,6 @@ def _quick_filter_chips(values: List[str], key_prefix: str, session_key: str, ma
 
 def _tab_overview(df: pd.DataFrame):
     st.subheader("Overview")
-    st.markdown("**Nota importante:** Los Topics/Clústers incluyen títulos resumidos (ej. 'Topic 2 — Farmer Agroecology Training') en todos los gráficos y selecciones para resumir el tema principal.")
     if df.empty:
         st.info("No data to display with the current filters.")
         return
@@ -1149,8 +1148,6 @@ def main():
     partners_opts = _safe_unique(p_long_all["Partner"]) if "Partner" in p_long_all.columns else []
     partners_sel = st.sidebar.multiselect("Partners", options=partners_opts, key="flt_partners")
 
-    st.sidebar.caption("Nota: Los Topics/Clústers se muestran con títulos resumidos (ej. 'Topic 2 — Farmer Agroecology Training') para mayor claridad.")
-
     # Compose filters dict
     filters = {
         "search": search,
@@ -1191,20 +1188,6 @@ def main():
 
     with tabs[7]:
         _tab_data(filtered)
-
-    with st.expander("Debug: Verificación de datos y títulos (click para expandir)"):
-        st.write("Columnas en el DataFrame principal:", df.columns.tolist())
-        if "Topic" in df.columns:
-            st.write("Columna 'Topic' detectada. Muestra de valores:", df["Topic"].unique()[:10])
-            if "Topic Label" in df.columns:
-                st.write("Muestra de 'Topic Label' (con títulos):", df["Topic Label"].dropna().unique()[:10])
-            else:
-                st.error("Columna 'Topic Label' no generada. Verifica TOPIC_TITLES y la aplicación de apply().")
-        else:
-            st.error("Columna 'Topic' NO detectada en los datos. Los títulos no se pueden mapear. Verifica el archivo CSV de input.")
-        st.write("Número de rows en df:", len(df))
-        st.write("Número de rows después de filtros:", len(filtered))
-
 
 if __name__ == "__main__":
     main()
